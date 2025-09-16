@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notes App</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        /* Header */
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 20px 30px;
+            border-radius: 15px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header h1 {
+            color: #4a5568;
+            font-size: 2.5rem;
+            font-weight: 700;
+        }
+        
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .user-email {
+            color: #666;
+            font-weight: 500;
+        }
+        
+        /* Auth Section */
+        .auth-section {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 80vh;
+        }
+        
+        .auth-container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 450px;
+        }
+        
+        .auth-tabs {
+            display: flex;
+            margin-bottom: 30px;
+            background: #f7fafc;
+            border-radius: 10px;
+            padding: 5px;
+        }
+        
+        .auth-tab {
+            flex: 1;
+            padding: 12px 20px;
+            text-align: center;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            color: #666;
+        }
+        
+        .auth-tab.active {
+            background: #667eea;
+            color: white;
+            box-shadow: 0 2px 10px rgba(102, 126, 234, 0.3);
+        }
+        
+        /* Main Layout */
+        .main-layout {
+            display: grid;
+            grid-template-columns: 1fr 300px 1fr;
+            gap: 30px;
+            align-items: start;
+        }
+        
+        .section-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            height: fit-content;
+        }
+        
+        .filter-card {
+            padding: 20px;
+        }
+        
+        .section-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #4a5568;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .filter-title {
+            font-size: 1.2rem;
+            margin-bottom: 15px;
+        }
+        
+        /* Form Styles */
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #4a5568;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        
+        input, textarea {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            background: #f7fafc;
+        }
+        
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        textarea {
+            height: 100px;
+            resize: vertical;
+            font-family: inherit;
+        }
+        
+        /* Buttons */
+        button {
+            width: 100%;
+            padding: 12px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 10px;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+        }
+        
+        .btn-secondary {
+            background: linear-gradient(135deg, #718096 0%, #4a5568 100%);
+        }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, #e53e3e 0%, #c53030 100%);
+            width: auto;
+            padding: 8px 16px;
+            font-size: 14px;
+            margin-top: 0;
+        }
+        
+        .btn-small {
+            width: auto;
+            padding: 8px 16px;
+            font-size: 14px;
+            margin-top: 0;
+            margin-right: 10px;
+        }
+        
+        .btn-logout {
+            width: auto;
+            padding: 8px 20px;
+            font-size: 14px;
+            margin-top: 0;
+        }
+        
+        /* Notes Display */
+        .notes-list {
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        
+        .note-item {
+            background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
+            padding: 20px;
+            margin: 15px 0;
+            border-radius: 15px;
+            border-left: 5px solid #667eea;
+            transition: all 0.3s ease;
+        }
+        
+        .note-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        }
+        
+        .note-title {
+            font-weight: 700;
+            color: #2d3748;
+            margin-bottom: 8px;
+            font-size: 1.1rem;
+        }
+        
+        .note-content {
+            color: #4a5568;
+            margin-bottom: 12px;
+            line-height: 1.6;
+        }
+        
+        .note-tags {
+            margin-bottom: 12px;
+        }
+        
+        .tag {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-right: 8px;
+            display: inline-block;
+        }
+        
+        .note-meta {
+            font-size: 12px;
+            color: #a0aec0;
+            margin-bottom: 12px;
+        }
+        
+        .note-actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        /* Filter Section */
+        .filter-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        /* Utility Classes */
+        .hidden {
+            display: none !important;
+        }
+        
+        .error {
+            color: #e53e3e;
+            text-align: center;
+            margin-top: 15px;
+            font-weight: 600;
+        }
+        
+        .success {
+            color: #38a169;
+            text-align: center;
+            margin-top: 15px;
+            font-weight: 600;
+        }
+        
+        .empty-state {
+            text-align: center;
+            color: #a0aec0;
+            font-style: italic;
+            padding: 40px 20px;
+        }
+        
+        /* Responsive Design */
+        @media (max-width: 1200px) {
+            .main-layout {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+            
+            .container {
+                padding: 15px;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                gap: 15px;
+                text-align: center;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .auth-container {
+                padding: 30px 20px;
+            }
+            
+            .section-card {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Auth Section -->
+        <div id="authSection" class="auth-section">
+            <div class="auth-container">
+                <div class="auth-tabs">
+                    <div class="auth-tab active" onclick="showSignIn()">Sign In</div>
+                    <div class="auth-tab" onclick="showSignUp()">Sign Up</div>
+                </div>
+                
+                <!-- Sign In Form -->
+                <div id="signInForm">
+                    <h2 class="section-title">Welcome Back</h2>
+                    <form id="loginForm">
+                        <div class="form-group">
+                            <label for="loginEmail">Email Address</label>
+                            <input type="email" id="loginEmail" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="loginPassword">Password</label>
+                            <input type="password" id="loginPassword" required>
+                        </div>
+                        <button type="submit">Sign In</button>
+                        <div id="loginError" class="error"></div>
+                    </form>
+                </div>
+                
+                <!-- Sign Up Form -->
+                <div id="signUpForm" class="hidden">
+                    <h2 class="section-title">Create Account</h2>
+                    <form id="registerForm">
+                        <div class="form-group">
+                            <label for="regEmail">Email Address</label>
+                            <input type="email" id="regEmail" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="regPassword">Password (min 6 characters)</label>
+                            <input type="password" id="regPassword" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="regPhone">Phone Number</label>
+                            <input type="tel" id="regPhone" required>
+                        </div>
+                        <button type="submit">Create Account</button>
+                        <div id="registerError" class="error"></div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main App Section -->
+        <div id="appSection" class="hidden">
+            <!-- Header -->
+            <div class="header">
+                <h1>📝 My Notes</h1>
+                <div class="user-info">
+                    <span class="user-email" id="userEmail"></span>
+                    <button onclick="logout()" class="btn-logout btn-secondary">Logout</button>
+                </div>
+            </div>
+
+            <!-- Main Layout -->
+            <div class="main-layout">
+                <!-- Create Note Section -->
+                <div class="section-card">
+                    <h2 class="section-title">✨ Create New Note</h2>
+                    <form id="createNoteForm">
+                        <div class="form-group">
+                            <label for="noteTitle">Title</label>
+                            <input type="text" id="noteTitle" required placeholder="Enter note title...">
+                        </div>
+                        <div class="form-group">
+                            <label for="noteContent">Content</label>
+                            <textarea id="noteContent" required placeholder="Write your note content here..."></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="noteTags">Tags</label>
+                            <input type="text" id="noteTags" placeholder="work, personal, urgent (comma separated)">
+                        </div>
+                        <button type="submit">Create Note</button>
+                    </form>
+                </div>
+
+                <!-- Filter Section -->
+                <div class="section-card filter-card">
+                    <h3 class="filter-title">🔍 Filter Notes</h3>
+                    <div class="form-group">
+                        <label for="filterTags">Filter by Tags</label>
+                        <input type="text" id="filterTags" placeholder="work, urgent">
+                    </div>
+                    <div class="filter-buttons">
+                        <button type="button" onclick="filterNotes()" class="btn-small">Filter</button>
+                        <button type="button" onclick="loadNotes()" class="btn-small btn-secondary">Show All</button>
+                    </div>
+                </div>
+
+                <!-- Notes List Section -->
+                <div class="section-card">
+                    <h2 class="section-title">📋 Your Notes</h2>
+                    <div class="notes-list" id="notesList">
+                        <div class="empty-state">Loading notes...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
