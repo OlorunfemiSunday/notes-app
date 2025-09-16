@@ -24,6 +24,7 @@ const authLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  trustProxy: true, // Add this for proxy support
   skip: (req) => {
     // Skip rate limiting for health checks
     return req.path === '/health' || req.path === '/test';
@@ -42,6 +43,7 @@ const strictAuthLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  trustProxy: true,
 });
 
 // Password change rate limiting
@@ -56,6 +58,7 @@ const passwordLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  trustProxy: true,
 });
 
 // Apply general rate limiting to all auth routes
@@ -84,7 +87,16 @@ const validateRequest = (req, res, next) => {
   next();
 };
 
-// Simplified register route for debugging
+// Flexible phone validation helper
+const phoneValidation = body('phone')
+  .notEmpty()
+  .withMessage('Phone number is required')
+  .isLength({ min: 8 }) // Reduced to 8 for more flexibility
+  .withMessage('Phone number must be at least 8 characters')
+  .matches(/^[\+]?[0-9\s\-\(\)]+$/)
+  .withMessage('Phone number contains invalid characters');
+
+// Register route with flexible validation
 router.post('/register', strictAuthLimiter, [
   body('email')
     .isEmail()
@@ -92,14 +104,10 @@ router.post('/register', strictAuthLimiter, [
     .withMessage('Please provide a valid email address')
     .bail(),
   body('password')
-    .isLength({ min: 6 }) // Simplified to 6 characters for testing
+    .isLength({ min: 6 })
     .withMessage('Password must be at least 6 characters long')
     .bail(),
-  body('phone')
-    .notEmpty()
-    .withMessage('Phone number is required')
-    .isLength({ min: 10 })
-    .withMessage('Phone number must be at least 10 digits')
+  phoneValidation
 ], validateRequest, (req, res, next) => {
   console.log('Register route hit with data:', req.body);
   register(req, res, next);
@@ -122,19 +130,27 @@ router.post('/login', strictAuthLimiter, [
 });
 
 // Protected routes
-router.get('/profile', authMiddleware, getProfile);
+router.get('/profile', authMiddleware, (req, res, next) => {
+  console.log('Profile route hit for user:', req.userId);
+  getProfile(req, res, next);
+});
 
 router.put('/profile', authMiddleware, [
   body('phone')
     .optional()
-    .isLength({ min: 10 })
-    .withMessage('Phone number must be at least 10 digits'),
+    .isLength({ min: 8 })
+    .withMessage('Phone number must be at least 8 characters')
+    .matches(/^[\+]?[0-9\s\-\(\)]+$/)
+    .withMessage('Phone number contains invalid characters'),
   body('email')
     .optional()
     .isEmail()
     .normalizeEmail()
     .withMessage('Please provide a valid email address')
-], validateRequest, updateProfile);
+], validateRequest, (req, res, next) => {
+  console.log('Profile update route hit for user:', req.userId);
+  updateProfile(req, res, next);
+});
 
 router.put('/change-password', authMiddleware, passwordLimiter, [
   body('currentPassword')
@@ -151,7 +167,10 @@ router.put('/change-password', authMiddleware, passwordLimiter, [
       }
       return true;
     })
-], validateRequest, changePassword);
+], validateRequest, (req, res, next) => {
+  console.log('Password change route hit for user:', req.userId);
+  changePassword(req, res, next);
+});
 
 // Debug route to test validation
 router.post('/debug-validation', [
@@ -168,8 +187,21 @@ router.post('/debug-validation', [
   });
 });
 
+// Verify token route
+router.get('/verify', authMiddleware, (req, res) => {
+  res.json({
+    success: true,
+    message: 'Token is valid',
+    user: {
+      id: req.userId,
+      email: req.userEmail
+    }
+  });
+});
+
 // Logout route
 router.post('/logout', authMiddleware, (req, res) => {
+  console.log('Logout route hit for user:', req.userId);
   res.json({
     success: true,
     message: 'Logged out successfully'
@@ -182,7 +214,16 @@ router.get('/test', (req, res) => {
     success: true,
     message: 'Auth routes working!',
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
+    routes: [
+      'POST /register',
+      'POST /login',
+      'GET /profile',
+      'PUT /profile',
+      'PUT /change-password',
+      'POST /logout',
+      'GET /verify'
+    ]
   });
 });
 
@@ -193,17 +234,45 @@ router.get('/health', (req, res) => {
     status: 'healthy',
     service: 'auth',
     timestamp: new Date().toISOString(),
-    uptime: process.uptime()
+    uptime: process.uptime(),
+    memory: process.memoryUsage()
   });
+});
+
+// Get all users route (for debugging - remove in production)
+router.get('/users', authMiddleware, async (req, res) => {
+  try {
+    const User = require('../models/User');
+    const users = await User.find({}).select('-password').limit(10);
+    res.json({
+      success: true,
+      count: users.length,
+      users
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch users',
+      error: error.message
+    });
+  }
 });
 
 // Error handling middleware for this router
 router.use((error, req, res, next) => {
   console.error('Auth route error:', error);
+  
+  // Handle rate limit errors gracefully
+  if (error.code === 'ERR_ERL_UNEXPECTED_X_FORWARDED_FOR') {
+    console.log('Rate limit proxy warning - continuing...');
+    return next();
+  }
+  
   res.status(error.status || 500).json({
     success: false,
     message: 'Internal server error in auth routes',
-    error: process.env.NODE_ENV === 'development' ? error.message : 'Something went wrong'
+    error: process.env.NODE_ENV === 'development' ? error.message : 'Something went wrong',
+    timestamp: new Date().toISOString()
   });
 });
 

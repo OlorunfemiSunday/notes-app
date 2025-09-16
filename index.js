@@ -7,6 +7,9 @@ const rateLimit = require("express-rate-limit");
 
 const app = express();
 
+// Trust proxy for deployment platforms (MUST BE FIRST)
+app.set('trust proxy', 1);
+
 // Validate environment variables
 if (!process.env.MONGODB_URI) {
   console.error('FATAL ERROR: MONGODB_URI environment variable is not set');
@@ -24,7 +27,16 @@ app.use(helmet({
   },
 }));
 
-app.use(cors());
+// CORS configuration for production
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production' 
+    ? ['https://your-frontend-domain.com'] // Replace with your actual frontend URL
+    : ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token']
+}));
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(express.static("public"));
@@ -34,12 +46,14 @@ const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 5, // limit each IP to 5 requests per windowMs
   message: {
+    success: false,
     error: "Too many login attempts",
     message: "Please try again later",
     retryAfter: 15 * 60
   },
   standardHeaders: true,
   legacyHeaders: false,
+  trustProxy: true, // Add this for proper proxy support
 });
 
 // MongoDB connection with improved timeout settings and error handling
@@ -50,7 +64,6 @@ const connectDB = async () => {
     const conn = await mongoose.connect(process.env.MONGODB_URI, {
       serverSelectionTimeoutMS: 30000, // 30 seconds
       socketTimeoutMS: 45000, // 45 seconds
-      // Removed bufferMaxEntries: 0, - This option is deprecated
       maxPoolSize: 10, // Maintain up to 10 socket connections
       minPoolSize: 5, // Maintain minimum 5 socket connections
       maxIdleTimeMS: 30000, // Close connections after 30 seconds of inactivity
@@ -129,21 +142,36 @@ app.use("/api/notes", require("./routes/notes"));
 app.get('/api/health', (req, res) => {
   const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
   res.json({
+    success: true,
     status: 'healthy',
     service: 'notes-api',
     database: dbStatus,
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
+    version: '1.0.0'
   });
 });
 
 // Basic route for testing
 app.get('/api', (req, res) => {
   res.json({ 
+    success: true,
     message: 'Notes API Server is running!',
     version: '1.0.0',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
+// Root route
+app.get('/', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Welcome to Notes API',
+    version: '1.0.0',
+    documentation: '/api',
+    health: '/api/health'
   });
 });
 
@@ -152,13 +180,27 @@ app.use('*', (req, res) => {
   res.status(404).json({
     success: false,
     message: 'Route not found',
-    path: req.originalUrl
+    path: req.originalUrl,
+    availableRoutes: [
+      'GET /',
+      'GET /api',
+      'GET /api/health',
+      'POST /api/auth/register',
+      'POST /api/auth/login',
+      'GET /api/auth/profile'
+    ]
   });
 });
 
 // Global error handler
 app.use((err, req, res, next) => {
   console.error('Global error handler:', err);
+  
+  // Handle rate limit errors
+  if (err.code === 'ERR_ERL_UNEXPECTED_X_FORWARDED_FOR') {
+    console.log('Rate limit proxy error - this is expected in production');
+    return next(); // Continue processing
+  }
   
   // Handle specific error types
   if (err.name === 'ValidationError') {
@@ -176,15 +218,31 @@ app.use((err, req, res, next) => {
     });
   }
   
+  if (err.name === 'MongoError' && err.code === 11000) {
+    return res.status(400).json({
+      success: false,
+      message: 'Duplicate entry error'
+    });
+  }
+  
   res.status(err.status || 500).json({ 
     success: false,
     message: 'Internal server error',
-    error: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
+    error: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong',
+    timestamp: new Date().toISOString()
   });
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`Health check: http://localhost:${PORT}/api/health`);
 });
+
+// Handle server errors
+server.on('error', (error) => {
+  console.error('Server error:', error);
+});
+
+module.exports = app;
