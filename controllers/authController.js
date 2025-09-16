@@ -8,6 +8,14 @@ const register = async (req, res) => {
     const { email, password, phone } = req.body;
     console.log('Registration request received:', { email, password: '***', phone });
 
+    // Validate required fields
+    if (!email || !password || !phone) {
+      return res.status(400).json({
+        success: false,
+        message: 'All fields (email, password, phone) are required'
+      });
+    }
+
     // Check if user exists with timeout handling
     console.log('Checking if user exists:', email);
     const existingUser = await User.findOne({ email }).maxTimeMS(10000);
@@ -30,12 +38,12 @@ const register = async (req, res) => {
       phone
     });
 
-    await user.save();
+    const savedUser = await user.save();
     console.log('User registered successfully:', email);
 
     // Generate JWT token
     const token = jwt.sign(
-      { userId: user._id, email: user.email },
+      { userId: savedUser._id, email: savedUser.email },
       process.env.JWT_SECRET || 'fallback_secret_key',
       { expiresIn: '24h' }
     );
@@ -45,15 +53,27 @@ const register = async (req, res) => {
       message: 'User registered successfully',
       token,
       user: {
-        id: user._id,
-        email: user.email,
-        phone: user.phone
+        id: savedUser._id,
+        email: savedUser.email,
+        phone: savedUser.phone,
+        createdAt: savedUser.createdAt
       }
     });
 
   } catch (error) {
     console.error('Registration error:', error);
     
+    // Handle Mongoose validation errors
+    if (error.name === 'ValidationError') {
+      const validationErrors = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: validationErrors
+      });
+    }
+    
+    // Handle timeout errors
     if (error.name === 'MongooseError' && error.message.includes('buffering timed out')) {
       return res.status(503).json({ 
         success: false,
@@ -61,6 +81,7 @@ const register = async (req, res) => {
       });
     }
     
+    // Handle duplicate email error
     if (error.code === 11000) {
       return res.status(400).json({ 
         success: false,
@@ -68,6 +89,7 @@ const register = async (req, res) => {
       });
     }
     
+    // Handle other errors
     res.status(500).json({ 
       success: false,
       message: 'Registration failed', 
@@ -81,6 +103,14 @@ const login = async (req, res) => {
   try {
     const { email, password } = req.body;
     console.log('Login attempt for:', email);
+
+    // Validate required fields
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email and password are required'
+      });
+    }
 
     // Find user with timeout handling
     const user = await User.findOne({ email }).maxTimeMS(10000);
@@ -118,7 +148,8 @@ const login = async (req, res) => {
       user: {
         id: user._id,
         email: user.email,
-        phone: user.phone
+        phone: user.phone,
+        createdAt: user.createdAt
       }
     });
 
@@ -143,6 +174,8 @@ const login = async (req, res) => {
 // Get Profile Controller
 const getProfile = async (req, res) => {
   try {
+    console.log('Getting profile for user ID:', req.userId);
+    
     const user = await User.findById(req.userId).select('-password').maxTimeMS(10000);
     
     if (!user) {
@@ -166,6 +199,13 @@ const getProfile = async (req, res) => {
   } catch (error) {
     console.error('Get profile error:', error);
     
+    if (error.name === 'CastError') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user ID'
+      });
+    }
+    
     if (error.name === 'MongooseError' && error.message.includes('buffering timed out')) {
       return res.status(503).json({ 
         success: false,
@@ -187,6 +227,16 @@ const updateProfile = async (req, res) => {
     const { phone, email } = req.body;
     const userId = req.userId;
 
+    console.log('Updating profile for user:', userId, 'with data:', { phone, email });
+
+    // Validate at least one field is provided
+    if (!phone && !email) {
+      return res.status(400).json({
+        success: false,
+        message: 'At least one field (phone or email) is required for update'
+      });
+    }
+
     // If email is being updated, check if it already exists
     if (email) {
       const existingUser = await User.findOne({ 
@@ -205,6 +255,7 @@ const updateProfile = async (req, res) => {
     const updateData = {};
     if (phone) updateData.phone = phone;
     if (email) updateData.email = email;
+    updateData.updatedAt = new Date();
 
     const updatedUser = await User.findByIdAndUpdate(
       userId,
@@ -219,6 +270,8 @@ const updateProfile = async (req, res) => {
       });
     }
 
+    console.log('Profile updated successfully for user:', userId);
+
     res.json({
       success: true,
       message: 'Profile updated successfully',
@@ -232,6 +285,22 @@ const updateProfile = async (req, res) => {
 
   } catch (error) {
     console.error('Update profile error:', error);
+    
+    if (error.name === 'ValidationError') {
+      const validationErrors = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: validationErrors
+      });
+    }
+    
+    if (error.name === 'CastError') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user ID'
+      });
+    }
     
     if (error.name === 'MongooseError' && error.message.includes('buffering timed out')) {
       return res.status(503).json({ 
@@ -260,6 +329,16 @@ const changePassword = async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
     const userId = req.userId;
+
+    console.log('Password change request for user:', userId);
+
+    // Validate required fields
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Current password and new password are required'
+      });
+    }
 
     // Find user
     const user = await User.findById(userId).maxTimeMS(10000);
@@ -312,6 +391,13 @@ const changePassword = async (req, res) => {
 
   } catch (error) {
     console.error('Change password error:', error);
+    
+    if (error.name === 'CastError') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user ID'
+      });
+    }
     
     if (error.name === 'MongooseError' && error.message.includes('buffering timed out')) {
       return res.status(503).json({ 
